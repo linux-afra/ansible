@@ -1,0 +1,43 @@
+--- # This is YAML for install and config Bind Forwarder
+- hosts: BindServers
+  remote_user: ansible
+  become: yes
+  become_method: sudo
+  connection: ssh
+  gather_facts: yes
+  
+  tasks:
+  - name: Install SNMP
+    yum: 
+      name: net-snmp
+      state: latest
+    notify:
+    - startservice
+
+  - name: Copy Config file
+    copy:
+      src: /etc/ansible/files/snmpd.conf
+      dest: /etc/snmp/snmpd.conf
+      owner: root
+      group: root
+      mode: 0600
+
+  - name: Add IPTABLES Rules
+    iptables:
+      chain: INPUT
+      action: insert
+      destination_port: 161
+      protocol: udp
+      jump: ACCEPT
+     
+
+  - name: IPTABLES Rules save
+    shell: iptables-save > /etc/sysconfig/iptables
+      
+     
+  handlers: 
+  - name: startservice
+    service:
+      name: named
+      state: restarted
+

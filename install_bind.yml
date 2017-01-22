@@ -1,0 +1,48 @@
+--- # This is YAML for install and config Bind Forwarder
+- hosts: BindServers
+  remote_user: ansible
+  become: yes
+  become_method: sudo
+  connection: ssh
+  gather_facts: yes
+  
+  tasks:
+  - name: Install Bind 
+    yum: 
+      name: bind
+      state: latest
+    notify:
+    - startservice
+
+  - name: Copy Config file
+    copy:
+      src: /etc/ansible/files/named.conf
+      dest: /etc/named.conf
+      owner: root
+      group: named
+      mode: 0640
+
+  - name: Add IPTABLES Rules
+    iptables:
+      chain: INPUT
+      destination_port: 53
+      protocol: tcp
+      jump: ACCEPT
+      
+  - name: Add IPTABLES Rules
+    iptables:
+      chain: INPUT
+      destination_port: 53
+      protocol: udp
+      jump: ACCEPT
+
+  - name: IPTABLES Rules save
+    shell: iptables-save > /etc/sysconfig/iptables
+      
+     
+  handlers: 
+  - name: startservice
+    service:
+      name: named
+      state: restarted
+

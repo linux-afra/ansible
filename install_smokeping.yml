@@ -1,0 +1,137 @@
+--- # This is YAML for install and config SmokePing
+- hosts: SmokeServers
+  remote_user: ansible
+  become: yes
+  become_method: sudo
+  connection: ssh
+  gather_facts: yes
+  
+  tasks:
+  - name: Install epel
+    yum:
+      name: epel-release
+      state: latest
+  - name: Import KEY
+    rpm_key:
+        state: present
+        key: /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-6
+  - name: Install Packages 
+    yum: state=installed name={{ item }}
+    with_items:
+      - httpd 
+      - httpd-devel 
+      - rrdtool 
+      - fping 
+      - wget 
+      - curl 
+      - bind-utils 
+      - gcc 
+      - make
+      - perl 
+      - perl-Net-Telnet 
+      - perl-Net-DNS 
+      - perl-LDAP 
+      - perl-libwww-perl 
+      - perl-IO-Socket-SSL 
+      - perl-Socket6 
+      - perl-CGI-SpeedyCGI 
+      - perl-FCGI 
+      - perl-ExtUtils-MakeMaker
+      - rrdtool-perl
+      - libselinux-python
+  - name: Disable SELINUX
+    lineinfile:
+        dest: /etc/selinux/config
+        regexp: '^SELINUX=enforcing'
+        line: 'SELINUX=disabled' 
+  - name: Disable SELINUX
+    shell: setenforce 0
+  - name: Download and Extrace SmokePing Source
+    unarchive:
+        src: http://oss.oetiker.ch/smokeping/pub/smokeping-2.6.11.tar.gz
+        dest: /opt/
+        remote_src: True
+  - name: Create Folder  
+    file: 
+        path: /opt/smokeping
+        state: directory
+  - name: Change DIR
+    shell: cd /opt/smokeping-2.6.11/setup/
+  - name: Resolve DNS Conflict By Remove DNS.pm
+    file:
+        path: /usr/lib64/perl5/Net/DNS.pm
+        state: absent
+  - name: Build
+    shell: /bin/bash /opt/smokeping-2.6.11/setup/build-perl-modules.sh
+  - name: Copy
+    shell: cp -r /opt/smokeping-2.6.11/thirdparty /opt/smokeping/
+  - name: Configure
+    command: ./configure --prefix=/opt/smokeping
+    args:
+        chdir: /opt/smokeping-2.6.11/
+  - name: Make
+    make: 
+       chdir: /opt/smokeping-2.6.11/
+       target: install
+  - name: Make DIR
+    shell: mkdir /opt/smokeping/data /opt/smokeping/var /opt/smokeping/cache 
+  - name: Get Smokeping Script
+    get_url:
+        url: http://pingpros.com/pub/smokeping
+        dest: /etc/init.d/
+        mode: 0755
+  - name: Rename
+    shell: for foo in /opt/smokeping/etc/*.dist; do cp $foo /opt/smokeping/etc/`basename $foo .dist`; done
+  - name: Secret
+    file:
+        path: /opt/smokeping/etc/smokeping_secrets.dist
+        mode: 0600
+  - name: Change Config File
+    lineinfile:
+        dest: /opt/smokeping/etc/config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+    with_items:
+        - { regexp: '^owner', line: 'owner = Afshin Paydar' }
+        - { regexp: '^contact', line: 'contact = paydar@afranet.com' }
+        - { regexp: '^cgiurl', line: 'cgiurl   = http://127.0.0.1/smokeping/smokeping.cgi'}
+  - name: Create link
+    shell: ln -s /opt/smokeping/cache /opt/smokeping/htdocs/cache
+  - name: File Owner
+    file:
+        path: /opt/smokeping
+        owner: apache
+        group: apache
+        state: directory
+  - name: Web Config
+    copy:
+        src: /etc/ansible/files/smokeping.conf
+        dest: /etc/httpd/conf.d/smokeping.conf
+  - name: Restart Apache Service
+    service:
+        name: httpd
+        state: restarted
+  - name: Restart Smokeping Service
+    service:
+        name: smokeping
+        state: restarted
+
+  - name: Add IPTABLES Rules
+    iptables:
+      chain: INPUT
+      action: insert
+      destination_port: 80
+      protocol: tcp
+      jump: ACCEPT 
+  - name: IPTABLES Rules save
+    shell: iptables-save > /etc/sysconfig/iptables    
+  - name: Clean UP
+    file:
+        path: /opt/smokeping-2.6.11/
+        state: absent
+  - name: Add Smokeping Service
+    shell: chkconfig --add smokeping
+  - name : Enable Smokeping Service
+    shell: chkconfig smokeping on
+  - name: Enable HTTPD Service
+    shell: chkconfig httpd on

@@ -1,0 +1,36 @@
+--- # This is YAML for install and config SmokePing
+- hosts: SmokeServers
+  remote_user: ansible
+  become: yes
+  become_method: sudo
+  connection: ssh
+  gather_facts: yes
+  
+  tasks:
+  - name: Install epel
+    yum:
+      name: epel-release
+      state: latest
+  - name: Import KEY
+    rpm_key:
+        state: present
+        key: /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-6
+  - name: Download and Extrace CSF Source
+    unarchive:
+        src: https://download.configserver.com/csf.tgz
+        dest: /usr/src
+        remote_src: True
+  - name: Build CSF
+    command: /bin/sh /usr/src/csf/install.sh
+    args:
+        chdir: /usr/src/csf/
+  - name: Stop Iptables Service
+    service:
+        name: iptables
+        state: stopped
+  - name: Stop CSF Service
+    service:
+        name: csf
+        state: restarted
+  - name: Reload csf Rules
+    shell: /usr/sbin/csf -r
