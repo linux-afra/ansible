@@ -1,4 +1,4 @@
---- # This is YAML for install and config Bind Forwarder
+--- # This is YAML for secure CentOS 6.x Servers
 - hosts: Hardening
   remote_user: ansible
   become: yes
