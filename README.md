@@ -5,10 +5,10 @@ adduser ansible
 echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 #ON Ansible Server
-su - ansible
-ssh-copy-id <Client IP>
+su - ansible \n
+ssh-copy-id <Client IP> \n
 
-echo "[SectionName]" >> /etc/ansible/hosts
-echo "<Client IP>" >> /etc/ansible/hosts
-ansible-playbook install_<>.yml
+echo "[SectionName]" >> /etc/ansible/hosts \n
+echo "<Client IP>" >> /etc/ansible/hosts \n
+ansible-playbook install_<>.yml \n
 
