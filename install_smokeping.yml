@@ -75,6 +75,12 @@
        target: install
   - name: Make DIR
     shell: mkdir /opt/smokeping/data /opt/smokeping/var /opt/smokeping/cache 
+  - name: Change Permission
+    file:
+        path: /opt/smokeping/cache
+        state: directory
+        owner: apache
+        group: apache
   - name: Get Smokeping Script
     get_url:
         url: http://pingpros.com/pub/smokeping
@@ -107,6 +113,10 @@
     copy:
         src: /etc/ansible/files/smokeping.conf
         dest: /etc/httpd/conf.d/smokeping.conf
+  - name: Smokeping Config
+    copy:
+        src: /etc/ansible/files/config
+        dest: /opt/smokeping/etc/config
   - name: Restart Apache Service
     service:
         name: httpd
