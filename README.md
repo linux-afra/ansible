@@ -1,13 +1,13 @@
 # ansible
 This is the playbooks for provisioning some functionality .
 #ON NEW Client System
-`adduser ansible  
-echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers  `
+`adduser ansible  <br />
+echo "ansible ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers  <br />`
 
 #ON Ansible Server
-`su - ansible  
-ssh-copy-id <Client IP>  
-echo "[SectionName]" >> /etc/ansible/hosts  
-echo "<Client IP>" >> /etc/ansible/hosts  
-ansible-playbook install_<>.yml  `
+`su - ansible  <br />
+ssh-copy-id <Client IP> <br />  
+echo "[SectionName]" >> /etc/ansible/hosts  <br />
+echo "<Client IP>" >> /etc/ansible/hosts  <br />
+ansible-playbook install_<>.yml  <br />`
 
