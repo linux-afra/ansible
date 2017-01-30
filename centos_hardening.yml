@@ -1,0 +1,302 @@
+--- # This is YAML for secure CentOS 6.x Servers
+- hosts: Hardening
+  remote_user: ansible
+  become: yes
+  become_method: sudo
+  connection: ssh
+  gather_facts: yes
+  
+  tasks:
+##############MCI-1429.RHD6-C1.R1.0###############
+  - name: install libselinux-python for pre requirements
+    yum:
+        name: libselinux-python
+        state: latest
+  - name: ADD GPG KEY CentOS6
+    rpm_key:
+        state: present
+        key: https://www.centos.org/keys/RPM-GPG-KEY-CentOS-6
+
+  ##Need to continue if any of this file does not exist !
+  - name: Remove hosts.equiv 
+    file:
+        path: /etc/hosts.equiv
+        state: absent
+  - name: Remove .rhosts files
+    shell: find /home/ -name .rhosts -delete ; find /root/ -name .rhosts -delete
+  - name: accounts configured with blank
+    replace:
+        dest: "{{ item }}"
+        regexp: nullok
+        replace: ''
+        backup: yes
+    with_items:
+        - /etc/pam.d/system-auth
+        - /etc/pam.d/system-auth-ac
+
+  - name: Remove telnet-server,rsh-server package
+    yum: 
+        name: "{{ item }}"
+        state: absent
+    with_items:
+        - rsh-server
+        - rsh
+        - telnet-server
+
+  - name: Check if xinetd service exists
+    stat:
+        path: /etc/init.d/xinetd
+    register: xinetd_status
+  - name: The telnet daemon must not be running.
+    service:
+      name: "{{ item }}" 
+      state: stopped
+      enabled: no
+    when: xinetd_status.stat.exists
+    with_items:
+       - xinetd
+
+  - name: Config SSH
+    lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+    with_items:
+       - { regexp: '^Protocol', line: 'Protocol 2' }
+       - { regexp: 'PermitEmptyPasswords', line: 'PermitEmptyPasswords no' } 
+       
+    notify:
+       - ssh service
+
+  - name: Ctrl-Alt-Delete key sequence must be disabled.
+    lineinfile:
+        dest: /etc/init/control-alt-delete.conf
+        regexp: 'exec /sbin/shutdown -r now "Control-Alt-Delete pressed"'
+        line: 'exec /usr/bin/logger -p security.info "Ctrl-Alt-Delete pressed"'
+
+  - name: The NFS server must not have the insecure file locking option enabled
+    replace:
+        dest: "/etc/exports"
+        regexp: insecure_locks
+        replace: ''
+
+  - name: Check if tftp Exists
+    stat: 
+        path: /etc/xinetd.d/tftp
+    register: tftp_status
+
+  - name: The TFTP daemon must operate in secure mode
+    lineinfile:
+        dest: "/etc/xinetd.d/tftp"
+        regexp: 'server_args'
+        line: 'server_args  = -s /var/lib/tftpboot'
+    when: tftp_status.stat.exists
+
+  - name: The snmpd service must not use a default password.
+    lineinfile:
+        dest: /etc/snmp/snmpd.conf
+        regexp: 'public'
+        state: absent
+    notify:
+       - snmpd service
+
+  - name: Check if /etc/rpmrc  Exists
+    stat: path=/etc/rpmrc
+    register: etc_rpmrc_status
+
+  - name: Check if /usr/lib/rpm/rpmrc  Exists
+    stat: 
+        path: /usr/lib/rpm/rpmrc
+    register: usr_lib_rpm_status
+
+  - name: Check if /usr/lib/rpm/redhat/rpmrc  Exists
+    stat: 
+        path: /usr/lib/rpm/redhat/rpmrc
+    register: usr_lib_rpm_redhat_rpmrc_status
+
+  - name: Check if ~root/.rpmrc  Exists
+    stat: 
+        path: ~root/.rpmrc
+    register: root_rpmrc_status
+
+
+  - name: The RPM package management tool must cryptographically verify the authenticity of all software packages (1)
+    replace:
+        dest: "/etc/rpmrc"
+        regexp: "nosignature"
+        replace: ''
+    when: etc_rpmrc_status.stat.exists
+
+  - name: The RPM package management tool must cryptographically verify the authenticity of all software packages (2)
+    replace:
+        dest: "/usr/lib/rpm/rpmrc"
+        regexp: "nosignature"
+        replace: ''
+    when: usr_lib_rpm_status.stat.exists
+
+  - name: The RPM package management tool must cryptographically verify the authenticity of all software packages (3)
+    replace:
+        dest: "/usr/lib/rpm/redhat/rpmrc"
+        regexp: "nosignature"
+        replace: ''
+    when: usr_lib_rpm_redhat_rpmrc_status.stat.exists
+
+
+  - name: The RPM package management tool must cryptographically verify the authenticity of all software packages (4)
+    replace:
+        dest: "~root/.rpmrc"
+        regexp: "nosignature"
+        replace: ''
+    when: root_rpmrc_status.stat.exists
+
+
+
+##################MCI-1429.RHD6-C2.R1.0###################
+  - name: The audit system must alert designated staff members
+    lineinfile:
+        dest: /etc/audit/auditd.conf
+        regexp: 'space_left_action'
+        line: 'space_left_action = email'
+
+  - name: Installing software updates
+    yum:
+        name: '*'
+        state: latest
+
+  - name: The system package management tool must cryptographically verify
+    lineinfile:
+         dest: /etc/yum.conf
+         regexp: 'gpgcheck'
+         line: 'gpgcheck=1'
+         create: yes
+
+  - name: A file integrity tool must be installed.
+    yum: 
+        name: aide
+        state: latest
+  - name: The system must prevent the root account from logging in from virtual consoles.
+    lineinfile:
+         dest: /etc/securetty
+         regexp: '^vc/[0-9]'
+         state: absent
+
+  - name: Default system accounts, other than root, must be locked
+    shell: "awk -F: '$3 < 500 && $3 != 5 && $3 != 6 && $3 != 7 && $3 != 0 { print $1  }' /etc/passwd | xargs -L 1 /usr/bin/passwd -l "
+    args:
+      executable: /bin/bash
+     
+  - name: The /etc/passwd file must not contain password hashes
+    shell: if [[ $( awk '-F:' '($2 != "x") {print $1 }' /etc/passwd )  ]]; then  wk '-F:' '($2 != "x") {print $1 }' /etc/passwd | xargs -I {} -L 1  userdel {} ; fi
+
+  - name: The root account must be the only account having a UID of 0
+    shell: awk '-F:' '($3 == "0" && $1 != "root" ) {print $1}' /etc/passwd | xargs -I {} sed -i   '/{}/d' /etc/passwd 
+    args:
+      executable: /bin/bash
+   
+  - name: The /etc/shadow , /etc/gshadow file must be owned by root
+    file:
+       path: "{{ item }}"
+       owner: root
+       group: root
+       mode: 0000   
+    with_items:
+       - /etc/shadow
+       - /etc/gshadow
+
+  - name: The /etc/passwd , /etc/group file must be owned by root
+    file:
+       path: "{{ item }}"
+       owner: root
+       group: root
+       mode: 0644
+    with_items:
+       - /etc/passwd
+       - /etc/group
+
+  - name: Library files must have mode 0755 or less permissive and files must be owned by root.
+    file:
+       path: "{{ item }}"
+       mode: "g-w,o-w"
+       owner: root
+    with_items:
+       - /lib
+       - /lib64
+       - /usr/lib
+       - /usr/lib64
+
+  - name: All system command files must have mode 0755 or less permissive.
+    file:
+       path: "{{ item }}"
+       mode: "g-w,o-w"
+       owner: root
+    with_items:
+       - /bin
+       - /usr/bin
+       - /usr/local/bin
+       - /sbin
+       - /usr/sbin
+       - /usr/local/sbin
+
+
+  - name: The system must require passwords to contain a minimum of 14 characters.
+    lineinfile:
+         dest: /etc/login.defs
+         regexp: '^PASS_MIN_LEN'
+         line: 'PASS_MIN_LEN    14'
+
+  - name: Users must not be able to change passwords more than once every 24 hours.
+    lineinfile:
+         dest: /etc/login.defs
+         regexp: '^PASS_MIN_DAYS'
+         line: 'PASS_MIN_DAYS   1'
+
+  - name: User passwords must be changed at least every 60 days.
+    lineinfile:
+         dest: /etc/login.defs
+         regexp: '^PASS_MAX_DAYS'
+         line: 'PASS_MAX_DAYS   60'
+
+  - name: update "/etc/pam.d/system-auth-ac" ,"/etc/pam.d/password-auth-ac" and "/etc/pam.d/system-auth".
+    copy:
+         src: "{{ item.src }}"
+         dest: "{{ item.dest }}"
+         owner: root
+         group: root
+         mode: 0644
+    with_items:
+         - { src: '/etc/ansible/files/system-auth-ac', dest: '/etc/pam.d/system-auth-ac' }
+         - { src: '/etc/ansible/files/password-auth-ac', dest: '/etc/pam.d/password-auth-ac' }
+         - { src: '/etc/ansible/files/system-auth' , dest: '/etc/pam.d/system-auth' }
+
+ 
+  - name: The system must use a FIPS 140-2 approved cryptographic hashing algorithm for generating account password hashes(ogin.defs)
+    lineinfile:
+         dest: /etc/login.defs
+         regexp: '^ENCRYPT_METHOD'
+         line: 'ENCRYPT_METHOD SHA512' 
+  - name: The system must use a FIPS 140-2 approved cryptographic hashing algorithm for generating account password hashes(ibuser.conf)
+    lineinfile:
+         dest: /etc/libuser.conf
+         regexp: '^crypt_style'
+         line: 'crypt_style = sha512'
+
+  - name: The system boot loader configuration file(s) must be owned by root:root.
+    file:
+       path: /etc/grub.conf
+       owner: root
+       group: root
+       mode: 0600
+
+  - name: The system boot loader must require authentication.
+
+
+  handlers: 
+  - name: ssh service
+    service:
+      name: sshd
+      state: restarted 
+            
+  - name: snmpd service
+    service:
+      name: snmpd
+      state: restarted
